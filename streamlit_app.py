@@ -18,8 +18,8 @@ if "success_toast" in st.session_state:
 @st.cache_data(ttl=600)
 def get_dashboard_stats():
     user = session.sql("SELECT CURRENT_USER()").collect()[0][0]
-    c_count = session.table("VITALIS_DEV.APP.CUSTOMER").where(~F.col("IS_DELETED")).count()
-    r_count = session.table("VITALIS_DEV.APP.CUSTOMER_REPORT").where(~F.col("IS_DELETED")).count()
+    c_count = session.table("VITALIS_SB.APP.CUSTOMER").where(~F.col("IS_DELETED")).count()
+    r_count = session.table("VITALIS_SB.APP.CUSTOMER_REPORT").where(~F.col("IS_DELETED")).count()
     return user, c_count, r_count
 
 current_user, total_customers, total_reports = get_dashboard_stats()
@@ -101,7 +101,7 @@ else:
                     with st.spinner("Uploading..."):
                         for f in uploaded_files:
                             rid = generate_id()
-                            spath = f"@VITALIS_DEV.APP.LAB_REPORT_LANDING/{sel_id}/{rid}_{f.name}"
+                            spath = f"@VITALIS_SB.APP.LAB_REPORT_LANDING/{sel_id}/{rid}_{f.name}"
                             session.file.put_stream(f, spath, auto_compress=False, overwrite=True)
                             db.add_report(rid, sel_id, f.name, spath, current_user)
                     st.session_state.up_key += 1; st.rerun()

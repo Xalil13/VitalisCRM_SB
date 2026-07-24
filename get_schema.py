@@ -11,10 +11,10 @@ def get_db_schema():
         if os.path.exists("config.json"):
             with open("config.json", "r") as f:
                 config = json.load(f)
-                return config.get("DB_SCHEMA", "VITALIS_DEV.APP")
+                return config.get("DB_SCHEMA", "VITALIS_SB.APP")
 
     except Exception:
         pass
 
     # Fallback to default dev schema
-    return "VITALIS_DEV.APP"
+    return "VITALIS_SB.APP"
