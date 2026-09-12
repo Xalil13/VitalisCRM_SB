@@ -92,3 +92,52 @@ def extract_report(report_id, customer_id, stage_path, batch_number, user_name):
         return False, res
     except Exception as e: 
         return False, str(e)
+
+ # --- BIOMARKERS METHODS ---
+def get_biomarkers(search_term=""):
+    session = get_active_session()
+    b = session.table(f"{DB_SCHEMA}.BIOMARKERS_MASTER_TABLE")
+    
+    df = b.filter(F.col("IS_DELETED") == False)
+    
+    if search_term:
+        search_col = F.lower(F.lit(f"%{search_term}%"))
+        # Added the UNIT column to the search filter
+        df = df.filter(
+            (F.lower(b["BIOMARKER"]).like(search_col)) | 
+            (F.lower(b["PANEL"]).like(search_col)) |
+            (F.lower(b["UNIT"]).like(search_col))
+        )
+        
+    return df.to_pandas()   
+
+def add_biomarker(biomarker, panel, unit, supp_resp, higher_better, user_name):
+    session = get_active_session()
+    # Safely generates the next numeric ID and inserts the record
+    sql = f"""
+        INSERT INTO {DB_SCHEMA}.BIOMARKERS_MASTER_TABLE 
+        (ID, BIOMARKER, PANEL, UNIT, SUPPLEMENT_RESPONSIVE, HIGHER_IS_BETTER, CREATED_AT, IS_DELETED, USER_NAME)
+        SELECT COALESCE(MAX(ID), 0) + 1, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(), FALSE, ?
+        FROM {DB_SCHEMA}.BIOMARKERS_MASTER_TABLE
+    """
+    session.sql(sql, params=[biomarker, panel, unit, supp_resp, higher_better, user_name]).collect()
+
+def update_biomarker(b_id, biomarker, panel, unit, supp_resp, higher_better, user_name):
+    session = get_active_session()
+    sql = f"""
+        UPDATE {DB_SCHEMA}.BIOMARKERS_MASTER_TABLE 
+        SET BIOMARKER = ?, PANEL = ?, UNIT = ?, SUPPLEMENT_RESPONSIVE = ?, HIGHER_IS_BETTER = ?, 
+            UPDATED_AT = CURRENT_TIMESTAMP(), USER_NAME = ?
+        WHERE ID = ?
+    """
+    # Cast b_id to int to ensure it maps correctly to the NUMBER column
+    session.sql(sql, params=[biomarker, panel, unit, supp_resp, higher_better, user_name, int(b_id)]).collect()
+
+def delete_biomarker(b_id, user_name):
+    session = get_active_session()
+    sql = f"""
+        UPDATE {DB_SCHEMA}.BIOMARKERS_MASTER_TABLE 
+        SET IS_DELETED = TRUE, DELETED_AT = CURRENT_TIMESTAMP(), USER_NAME = ?
+        WHERE ID = ?
+    """
+    session.sql(sql, params=[user_name, int(b_id)]).collect()       
