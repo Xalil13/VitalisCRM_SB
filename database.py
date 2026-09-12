@@ -93,7 +93,7 @@ def extract_report(report_id, customer_id, stage_path, batch_number, user_name):
     except Exception as e: 
         return False, str(e)
 
- # --- BIOMARKERS METHODS ---
+# --- BIOMARKERS METHODS ---
 def get_biomarkers(search_term=""):
     session = get_active_session()
     b = session.table(f"{DB_SCHEMA}.BIOMARKERS_MASTER_TABLE")
@@ -140,4 +140,4 @@ def delete_biomarker(b_id, user_name):
         SET IS_DELETED = TRUE, DELETED_AT = CURRENT_TIMESTAMP(), USER_NAME = ?
         WHERE ID = ?
     """
-    session.sql(sql, params=[user_name, int(b_id)]).collect()       
+    session.sql(sql, params=[user_name, int(b_id)]).collect()
