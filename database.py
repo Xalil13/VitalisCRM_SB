@@ -141,3 +141,56 @@ def delete_biomarker(b_id, user_name):
         WHERE ID = ?
     """
     session.sql(sql, params=[user_name, int(b_id)]).collect()
+
+
+# --- NEW CONFIG & MARKER EDITING METHODS ---
+
+def update_marker(marker_id, section, batch, marker, result, unit, ref, ref_start, ref_end, within, user_name):
+    get_active_session().call(f'{DB_SCHEMA}.SP_UPDATE_MARKER', 
+        str(marker_id), str(section or ""), str(batch or ""), str(marker or ""), 
+        str(result or ""), str(unit or ""), str(ref or ""), 
+        str(ref_start or ""), str(ref_end or ""), str(within or ""), user_name)
+
+def get_supplements():
+    return get_active_session().table(f"{DB_SCHEMA}.SUPPLEMENT_MASTER").to_pandas()
+
+def upsert_supplement(p_id, name, min_d, std_d, max_d, unit, food, spec, hard, cap, mon, male, female, a1, a2, a3, a4):
+    get_active_session().call(f'{DB_SCHEMA}.SP_UPSERT_SUPPLEMENT', 
+        p_id, name, float(min_d or 0), float(std_d or 0), float(max_d or 0), unit, 
+        bool(food), spec, bool(hard), bool(cap), bool(mon), 
+        float(male or 0), float(female or 0), float(a1 or 0), float(a2 or 0), float(a3 or 0), float(a4 or 0))
+
+def get_mappings():
+    # Use a SQL JOIN to get the actual names instead of just the IDs
+    query = f"""
+        SELECT 
+            m.ID,
+            b.BIOMARKER AS BIOMARKER_NAME,
+            m.RESULT_TIER,
+            s.INGREDIENT_NAME,
+            m.DOSE_TIER,
+            m.PRIORITY_RANK,
+            m.DOSE_DECIDER,
+            m.MUST_BE_CO_DOSE_WITH,
+            m.FORMULAS,
+            m.EXPECTED_DELTA_W4,
+            m.EXPECTED_DELTA_W12
+        FROM {DB_SCHEMA}.SUPPLEMENT_MARKER_MAPPING m
+        LEFT JOIN {DB_SCHEMA}.BIOMARKERS_MASTER_TABLE b ON m.BIOMARKER_ID = b.ID
+        LEFT JOIN {DB_SCHEMA}.SUPPLEMENT_MASTER s ON m.INGREDIENT_ID = s.ID
+    """
+    return get_active_session().sql(query).to_pandas()
+
+def upsert_mapping(p_id, bio_id, res_tier, ing_id, dose_tier, rank, decider, co_dose, formula, w4, w12):
+    get_active_session().call(f'{DB_SCHEMA}.SP_UPSERT_MAPPING', 
+        str(p_id) if p_id else None, 
+        int(bio_id) if pd.notna(bio_id) else 0, 
+        str(res_tier or ""), 
+        str(ing_id or ""), 
+        str(dose_tier or ""), 
+        int(rank) if pd.notna(rank) else 0, 
+        str(decider or ""), # Changed from bool() to str()
+        str(co_dose or ""), 
+        str(formula or ""), 
+        str(w4 or ""), 
+        str(w12 or ""))

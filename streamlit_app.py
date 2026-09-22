@@ -18,8 +18,9 @@ if "success_toast" in st.session_state:
 @st.cache_data(ttl=600)
 def get_dashboard_stats():
     user = session.sql("SELECT CURRENT_USER()").collect()[0][0]
-    c_count = session.table("VITALIS_SB.APP.CUSTOMER").where(~F.col("IS_DELETED")).count()
-    r_count = session.table("VITALIS_SB.APP.CUSTOMER_REPORT").where(~F.col("IS_DELETED")).count()
+    # Use db.DB_SCHEMA
+    c_count = session.table(f"{db.DB_SCHEMA}.CUSTOMER").where(~F.col("IS_DELETED")).count()
+    r_count = session.table(f"{db.DB_SCHEMA}.CUSTOMER_REPORT").where(~F.col("IS_DELETED")).count()
     return user, c_count, r_count
 
 current_user, total_customers, total_reports = get_dashboard_stats()
@@ -104,101 +105,181 @@ st.divider()
 if st.session_state.in_config_mode:
     # --- CONFIGURATION MODE ---
     st.header("⚙️ Configuration")
-    st.subheader("Biomarkers Management")
     
-    # ADD NEW BIOMARKER (Moved to top)
-    with st.expander("➕ Add New Biomarker", expanded=False):
-        with st.form("new_biomarker_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                n_bio = st.text_input("Biomarker Name *")
-                n_panel = st.text_input("Panel *")
-                n_unit = st.text_input("Unit *")
-            with col2:
-                n_supp = st.selectbox("Supplement-responsive?", ["Yes", "No", "Indirect", "Safety flag", "N/A"])
-                n_higher = st.selectbox("Higher is better?", ["Yes", "No (low is good)", "N/A", "N/A (directional)"])
-            
-            if st.form_submit_button("Add Biomarker", type="primary", use_container_width=True):
-                if n_bio and n_panel and n_unit:
-                    db.add_biomarker(n_bio, n_panel, n_unit, n_supp, n_higher, current_user)
-                    st.session_state.success_toast = f"✅ Biomarker '{n_bio}' added!"
-                    st.rerun()
-                else:
-                    st.error("Please fill in all required fields (*).")
-                    
-    st.divider()
+    tab_bio, tab_supp, tab_map = st.tabs(["🧬 Biomarkers", "💊 Supplements", "🔗 Marker Mapping"])
     
-    # SEARCH & MANAGE EXISTING
-    if st.button("📊 View All Biomarker Records", use_container_width=True):
-        view_all_biomarkers_dialog()
-        
-    b_search = st.text_input("🔍 Search Biomarkers", placeholder="Type biomarker name, panel, unit, or letter to filter...")
-    biomarkers = db.get_biomarkers(b_search)
-    
-    if biomarkers.empty:
-        st.info("No active biomarkers found matching your search.")
-    else:
-        # 1. Sort the dataframe alphabetically by Biomarker name
-        biomarkers = biomarkers.sort_values(by="BIOMARKER", ascending=True)
-        
-        # 2. Add the Unit to the dropdown display mapping
-        b_map = {f"{r.BIOMARKER} - {r.UNIT} ({r.PANEL})": r.ID for r in biomarkers.itertuples()}
-        
-        sel_b_name = st.selectbox("Select Biomarker to view details", options=list(b_map.keys()))
-        sel_b_id = b_map[sel_b_name]
-        sel_b_data = biomarkers[biomarkers['ID'] == sel_b_id].iloc[0]
-        
-        with st.container(border=True):
-            # Header and Action Buttons
-            h_col1, h_col2, h_col3 = st.columns([6, 2, 2])
-            with h_col1:
-                st.markdown(f"### {sel_b_data['BIOMARKER']}")
-                st.caption(f"Panel: {sel_b_data['PANEL']} | Unit: {sel_b_data['UNIT']}")
-            
-            with h_col2:
-                if st.button("✏️ Edit", use_container_width=True, key=f"edit_btn_{sel_b_id}"):
-                    st.session_state.edit_biomarker_id = sel_b_id
-                    st.rerun()
-            with h_col3:
-                if st.button("🗑️ Delete", type="primary", use_container_width=True, key=f"del_btn_{sel_b_id}"):
-                    delete_biomarker_dialog(sel_b_id, sel_b_data['BIOMARKER'])
-            
-            st.divider()
-            
-            # Edit Form OR Detail View
-            if st.session_state.get("edit_biomarker_id") == sel_b_id:
-                with st.form(f"edit_form_{sel_b_id}"):
-                    st.markdown("**Edit Details**")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        e_bio = st.text_input("Biomarker Name", value=sel_b_data['BIOMARKER'])
-                        e_panel = st.text_input("Panel", value=sel_b_data['PANEL'])
-                        e_unit = st.text_input("Unit", value=sel_b_data['UNIT'])
-                    with c2:
-                        supp_options = ["Yes", "No", "Indirect", "Safety flag", "N/A"]
-                        curr_supp = sel_b_data['SUPPLEMENT_RESPONSIVE']
-                        e_supp = st.selectbox("Supplement-responsive?", supp_options, index=supp_options.index(curr_supp) if curr_supp in supp_options else 0)
+    with tab_bio:
+        st.subheader("Biomarkers Management")
+        with st.expander("➕ Add New Biomarker", expanded=False):
+            with st.form("new_biomarker_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    n_bio = st.text_input("Biomarker Name *")
+                    n_panel = st.text_input("Panel *")
+                    n_unit = st.text_input("Unit *")
+                with col2:
+                    n_supp = st.selectbox("Supplement-responsive?", ["Yes", "No", "Indirect", "Safety flag", "N/A"])
+                    n_higher = st.selectbox("Higher is better?", ["Yes", "No (low is good)", "N/A", "N/A (directional)"])
+                
+                if st.form_submit_button("Add Biomarker", type="primary", use_container_width=True):
+                    if n_bio and n_panel and n_unit:
+                        db.add_biomarker(n_bio, n_panel, n_unit, n_supp, n_higher, current_user)
+                        st.session_state.success_toast = f"✅ Biomarker '{n_bio}' added!"
+                        st.rerun()
+                    else:
+                        st.error("Please fill in all required fields (*).")
                         
-                        high_options = ["Yes", "No (low is good)", "N/A", "N/A (directional)"]
-                        curr_high = sel_b_data['HIGHER_IS_BETTER']
-                        e_higher = st.selectbox("Higher is better?", high_options, index=high_options.index(curr_high) if curr_high in high_options else 0)
-                    
-                    btn_c1, btn_c2 = st.columns(2)
-                    with btn_c1:
-                        if st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True):
-                            db.update_biomarker(sel_b_id, e_bio, e_panel, e_unit, e_supp, e_higher, current_user)
-                            st.session_state.success_toast = "✅ Changes saved!"
-                            st.session_state.edit_biomarker_id = None
-                            st.rerun()
-                    with btn_c2:
-                        if st.form_submit_button("Cancel", use_container_width=True):
-                            st.session_state.edit_biomarker_id = None
-                            st.rerun()
-            else:
-                # Detail View (Read-Only)
-                c1, c2 = st.columns(2)
-                c1.metric("Supplement-Responsive", sel_b_data['SUPPLEMENT_RESPONSIVE'])
-                c2.metric("Higher is Better", sel_b_data['HIGHER_IS_BETTER'])
+        st.divider()
+        st.write("") # Small spacing
+        search_col, btn_col = st.columns([4, 1], vertical_alignment="bottom")
+    
+        with search_col:
+            b_search = st.text_input("🔍 Search Biomarkers", placeholder="Type biomarker name, panel, unit, or letter to filter...", label_visibility="collapsed")
+        with btn_col:
+            if st.button("📊 View All Records"):
+                view_all_biomarkers_dialog()
+        biomarkers = db.get_biomarkers(b_search)
+        if biomarkers.empty:
+            st.info("No active biomarkers found matching your search.")
+        else:
+            biomarkers = biomarkers.sort_values(by="BIOMARKER", ascending=True)
+            b_map = {f"{r.BIOMARKER} - {r.UNIT} ({r.PANEL})": r.ID for r in biomarkers.itertuples()}
+            sel_b_name = st.selectbox("Select Biomarker to view details", options=list(b_map.keys()))
+            sel_b_id = b_map[sel_b_name]
+            sel_b_data = biomarkers[biomarkers['ID'] == sel_b_id].iloc[0]
+            
+            with st.container(border=True):
+                h_col1, h_col2, h_col3 = st.columns([6, 2, 2])
+                with h_col1:
+                    st.markdown(f"### {sel_b_data['BIOMARKER']}")
+                    st.caption(f"Panel: {sel_b_data['PANEL']} | Unit: {sel_b_data['UNIT']}")
+                with h_col2:
+                    if st.button("✏️ Edit", use_container_width=True, key=f"edit_btn_{sel_b_id}"):
+                        st.session_state.edit_biomarker_id = sel_b_id
+                        st.rerun()
+                with h_col3:
+                    if st.button("🗑️ Delete", type="primary", use_container_width=True, key=f"del_btn_{sel_b_id}"):
+                        delete_biomarker_dialog(sel_b_id, sel_b_data['BIOMARKER'])
+                st.divider()
+                
+                if st.session_state.get("edit_biomarker_id") == sel_b_id:
+                    with st.form(f"edit_form_{sel_b_id}"):
+                        st.markdown("**Edit Details**")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            e_bio = st.text_input("Biomarker Name", value=sel_b_data['BIOMARKER'])
+                            e_panel = st.text_input("Panel", value=sel_b_data['PANEL'])
+                            e_unit = st.text_input("Unit", value=sel_b_data['UNIT'])
+                        with c2:
+                            supp_options = ["Yes", "No", "Indirect", "Safety flag", "N/A", "Monitor", "Safety gate", "Safety check", "Modifier"]
+                            curr_supp = sel_b_data['SUPPLEMENT_RESPONSIVE']
+                            e_supp = st.selectbox("Supplement-responsive?", supp_options, index=supp_options.index(curr_supp) if curr_supp in supp_options else 0)
+                            
+                            high_options = ["Yes", "No (low is good)", "N/A", "N/A (directional)", "N/A (optimal range)"]
+                            curr_high = sel_b_data['HIGHER_IS_BETTER']
+                            e_higher = st.selectbox("Higher is better?", high_options, index=high_options.index(curr_high) if curr_high in high_options else 0)
+                        
+                        btn_c1, btn_c2 = st.columns(2)
+                        with btn_c1:
+                            if st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True):
+                                db.update_biomarker(sel_b_id, e_bio, e_panel, e_unit, e_supp, e_higher, current_user)
+                                st.session_state.success_toast = "✅ Changes saved!"
+                                st.session_state.edit_biomarker_id = None
+                                st.rerun()
+                        with btn_c2:
+                            if st.form_submit_button("Cancel", use_container_width=True):
+                                st.session_state.edit_biomarker_id = None
+                                st.rerun()
+                else:
+                    # Detail View (Read-Only) using standard Markdown
+                    c1, c2 = st.columns(2)
+                    c1.markdown(f"**Supplement-Responsive:**  \n{sel_b_data['SUPPLEMENT_RESPONSIVE']}")
+                    c2.markdown(f"**Higher is Better:**  \n{sel_b_data['HIGHER_IS_BETTER']}")
+
+    with tab_supp:
+        st.subheader("Supplement Master")
+        st.info("Add, edit, or delete supplements directly in the table below. Click 'Save Changes' when done.")
+        supp_df = db.get_supplements()
+        
+        edited_supp = st.data_editor(
+            supp_df, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            key="supp_editor",
+            column_config={"ID": None, "UPDATED_AT": None} # Hide system columns
+        )
+        
+        if st.button("💾 Save Supplement Changes", type="primary"):
+            edits = st.session_state["supp_editor"]
+            # Handle Edits
+            for idx, changes in edits["edited_rows"].items():
+                row = supp_df.iloc[idx].to_dict()
+                row.update(changes)
+                db.upsert_supplement(row['ID'], row.get('INGREDIENT_NAME'), row.get('MIN_DOSE'), row.get('STANDARD_DOSE'), row.get('MAX_DOSE'), row.get('UNIT'), row.get('FOOD_REQUIRED'), row.get('SPECIAL_POPULATIONS'), row.get('HARD_STOP'), row.get('DOSE_CAP'), row.get('MONITORING_REQUIRED'), row.get('MALE_MODIFIER'), row.get('FEMALE_MODIFIER'), row.get('AGE_MODIFIER_18_34'), row.get('AGE_MODIFIER_35_49'), row.get('AGE_MODIFIER_50_64'), row.get('AGE_MODIFIER_65_PLUS'))
+            # Handle Adds
+            for row in edits["added_rows"]:
+                db.upsert_supplement(None, row.get('INGREDIENT_NAME'), row.get('MIN_DOSE'), row.get('STANDARD_DOSE'), row.get('MAX_DOSE'), row.get('UNIT'), row.get('FOOD_REQUIRED', False), row.get('SPECIAL_POPULATIONS'), row.get('HARD_STOP', False), row.get('DOSE_CAP', False), row.get('MONITORING_REQUIRED', False), row.get('MALE_MODIFIER'), row.get('FEMALE_MODIFIER'), row.get('AGE_MODIFIER_18_34'), row.get('AGE_MODIFIER_35_49'), row.get('AGE_MODIFIER_50_64'), row.get('AGE_MODIFIER_65_PLUS'))
+            
+            st.session_state.success_toast = "✅ Supplements updated!"
+            st.rerun()
+
+    with tab_map:
+        st.subheader("Supplement Marker Mapping")
+        map_df = db.get_mappings()
+        
+        # 1. Create lookup dictionaries (Name -> ID) for saving later
+        bio_df = db.get_biomarkers("")
+        bio_map = {row['BIOMARKER']: row['ID'] for _, row in bio_df.iterrows()} if not bio_df.empty else {}
+        
+        supp_df = db.get_supplements()
+        supp_map = {row['INGREDIENT_NAME']: row['ID'] for _, row in supp_df.iterrows()} if not supp_df.empty else {}
+        
+        # 2. Display the Data Editor using Names instead of IDs
+        edited_map = st.data_editor(
+            map_df, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            key="map_editor",
+            column_config={
+                "ID": None, # Hide the mapping row ID
+                "BIOMARKER_NAME": st.column_config.SelectboxColumn("Biomarker", options=list(bio_map.keys()), required=True),
+                "INGREDIENT_NAME": st.column_config.SelectboxColumn("Ingredient", options=list(supp_map.keys()), required=True)
+            }
+        )
+        
+        if st.button("💾 Save Mapping Changes", type="primary"):
+            edits = st.session_state["map_editor"]
+            
+            # Handle Edits
+            for idx, changes in edits["edited_rows"].items():
+                row = map_df.iloc[idx].to_dict()
+                row.update(changes)
+                
+                # Translate the selected Name back to the database ID
+                b_id = bio_map.get(row.get('BIOMARKER_NAME'))
+                i_id = supp_map.get(row.get('INGREDIENT_NAME'))
+                
+                db.upsert_mapping(
+                    row['ID'], b_id, row.get('RESULT_TIER'), i_id, row.get('DOSE_TIER'), 
+                    row.get('PRIORITY_RANK'), row.get('DOSE_DECIDER'), row.get('MUST_BE_CO_DOSE_WITH'), 
+                    row.get('FORMULAS'), row.get('EXPECTED_DELTA_W4'), row.get('EXPECTED_DELTA_W12')
+                )
+                
+            # Handle Adds
+            for row in edits["added_rows"]:
+                # Translate the selected Name back to the database ID
+                b_id = bio_map.get(row.get('BIOMARKER_NAME'))
+                i_id = supp_map.get(row.get('INGREDIENT_NAME'))
+                
+                db.upsert_mapping(
+                    None, b_id, row.get('RESULT_TIER'), i_id, row.get('DOSE_TIER'), 
+                    row.get('PRIORITY_RANK'), row.get('DOSE_DECIDER', ""), row.get('MUST_BE_CO_DOSE_WITH'), 
+                    row.get('FORMULAS'), row.get('EXPECTED_DELTA_W4'), row.get('EXPECTED_DELTA_W12')
+                )
+            
+            st.session_state.success_toast = "✅ Mappings updated!"
+            st.rerun()
+
 else:
     # --- CRM MODE (ISOLATED) ---
     
@@ -266,7 +347,8 @@ else:
                         with st.spinner("Uploading..."):
                             for f in uploaded_files:
                                 rid = generate_id()
-                                spath = f"@VITALIS_SB.APP.LAB_REPORT_LANDING/{sel_id}/{rid}_{f.name}"
+                                # Use db.DB_SCHEMA for the stage path
+                                spath = f"@{db.DB_SCHEMA}.LAB_REPORT_LANDING/{sel_id}/{rid}_{f.name}"
                                 session.file.put_stream(f, spath, auto_compress=False, overwrite=True)
                                 db.add_report(rid, sel_id, f.name, spath, current_user)
                         st.session_state.up_key += 1; st.rerun()
@@ -316,14 +398,48 @@ else:
                 
                 sel_rep = rep_opts[st.selectbox("Filter by Report", options=list(rep_opts.keys()))]
                 markers = db.get_customer_markers(sel_id, sel_rep)
+                
                 if not markers.empty:
                     csv_df = markers.drop(columns=['IS_DELETED'], errors='ignore')
                     st.download_button("📥 Download Full CSV", csv_df.to_csv(index=False).encode('utf-8'), f"markers_{sel_id}.csv", "text/csv")
                     
-                    cols_order = ['ORIGINAL_FILENAME', 'REPORT_SECTION', 'BATCH_NUMBER', 'MARKER_NAME', 'RESULT', 'UNIT', 'REFERENCE_VALUES','REFERENCE_START','REFERENCE_END', 'WITHIN_RANGE', 'STAGE_PATH']
-                    disp = markers[cols_order].copy(); disp.columns = ['Report Name', 'Section','Batch Number', 'Marker', 'Result', 'Unit', 'Reference','Reference Start', 'Reference End', 'Within Range', 'Storage Path']
-                    st.dataframe(disp, use_container_width=True, hide_index=True)
-                else: st.info("No markers found.")
+                    # Include MARKER_ID so we can update it, but hide it in the UI
+                    cols_order = ['MARKER_ID', 'ORIGINAL_FILENAME', 'REPORT_SECTION', 'BATCH_NUMBER', 'MARKER_NAME', 'RESULT', 'UNIT', 'REFERENCE_VALUES','REFERENCE_START','REFERENCE_END', 'WITHIN_RANGE', 'STAGE_PATH']
+                    disp = markers[cols_order].copy()
+                    disp.columns = ['MARKER_ID', 'Report Name', 'Section','Batch Number', 'Marker', 'Result', 'Unit', 'Reference','Reference Start', 'Reference End', 'Within Range', 'Storage Path']
+                    
+                    st.info("✏️ You can edit Section, Batch Number, Marker, Result, Unit, Reference, Reference Start, Reference End, and Within Range directly in the table below.")
+                    
+                    edited_markers = st.data_editor(
+                        disp, 
+                        use_container_width=True, 
+                        hide_index=True,
+                        key="marker_editor",
+                        column_config={
+                            "MARKER_ID": None, # Hidden
+                            "Report Name": st.column_config.Column(disabled=True),
+                            "Storage Path": st.column_config.Column(disabled=True)
+                        }
+                    )
+                    
+                    if st.button("💾 Save Marker Edits", type="primary"):
+                        edits = st.session_state["marker_editor"]["edited_rows"]
+                        if edits:
+                            for idx, changes in edits.items():
+                                row = disp.iloc[idx].to_dict()
+                                row.update(changes) # Apply changes to the row
+                                db.update_marker(
+                                    row['MARKER_ID'], row['Section'], row['Batch Number'], 
+                                    row['Marker'], row['Result'], row['Unit'], 
+                                    row['Reference'], row['Reference Start'], row['Reference End'], 
+                                    row['Within Range'], current_user
+                                )
+                            st.session_state.success_toast = "✅ Marker edits saved successfully!"
+                            st.rerun()
+                        else:
+                            st.warning("No edits were made.")
+                else: 
+                    st.info("No markers found.")
 
             elif tab == "Edit":
                 sources = db.get_sources(); source_opts = {row['SOURCE_NAME']: row['SOURCE_ID'] for _, row in sources.iterrows()}
